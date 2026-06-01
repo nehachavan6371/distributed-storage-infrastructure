@@ -1,0 +1,93 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: storage_user
+      POSTGRES_PASSWORD: storage_password
+      POSTGRES_DB: distributed_storage
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storage_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  coordinator:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      NODE_ID: coordinator
+      DB_URL: postgresql://storage_user:storage_password@postgres:5432/distributed_storage
+      STORAGE_NODES: node_1,node_2,node_3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+  node_1:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      NODE_ID: node_1
+      NODE_PORT: 8001
+      DB_URL: postgresql://storage_user:storage_password@postgres:5432/distributed_storage
+      NODE_TYPE: primary
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python storage_node/node.py
+
+  node_2:
+    build: .
+    ports:
+      - "8002:8002"
+    environment:
+      NODE_ID: node_2
+      NODE_PORT: 8002
+      DB_URL: postgresql://storage_user:storage_password@postgres:5432/distributed_storage
+      NODE_TYPE: replica
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python storage_node/node.py
+
+  node_3:
+    build: .
+    ports:
+      - "8003:8003"
+    environment:
+      NODE_ID: node_3
+      NODE_PORT: 8003
+      DB_URL: postgresql://storage_user:storage_password@postgres:5432/distributed_storage
+      NODE_TYPE: replica
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python storage_node/node.py
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+volumes:
+  postgres_data:
+  prometheus_data:
+
+networks:
+  default:
+    name: distributed_storage_network
