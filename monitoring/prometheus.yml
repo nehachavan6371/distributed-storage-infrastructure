@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'distributed-storage'
+
+rule_files:
+  - 'alerts.yml'
+
+scrape_configs:
+  - job_name: 'coordinator'
+    static_configs:
+      - targets: ['localhost:8000']
+        labels:
+          instance: 'coordinator'
+  
+  - job_name: 'storage_nodes'
+    static_configs:
+      - targets: ['localhost:8001']
+        labels:
+          node: 'node_1'
+          type: 'primary'
+      - targets: ['localhost:8002']
+        labels:
+          node: 'node_2'
+          type: 'replica'
+      - targets: ['localhost:8003']
+        labels:
+          node: 'node_3'
+          type: 'replica'
+  
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
